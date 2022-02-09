@@ -13,7 +13,6 @@
 
 (defn -visit-Link
   [this ^Link link]
-  (println (.getDestination link))
   (.visitChildren this link)
   (.add (.state this) (.getDestination link)))
 

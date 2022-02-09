@@ -39,9 +39,25 @@
    (println (.getAbsolutePath aFile)))
  (get-folder-files-map (file "./data/README-1.md")))
 
+(def links (atom []))
+
+(defn processFile
+  [filePath]
+  (future 
+    (let [parser (.build (Parser/builder))
+          visitor (LinkVisitor.)
+          content (slurp filePath)]
+      (let [parsed (.parse parser content)]
+        (.accept parsed visitor)
+        (let [fileLinks (.getLinks visitor)]
+          (swap! links
+                 #(into [] (concat % fileLinks )))
+          (into [] (seq fileLinks)))))))
+
 (let [parser (.build (Parser/builder))
-      visitor (LinkVisitor.)]
-  (let [parsed (.parse parser "[Google](https://www.google.com \"Searcher\" )")]
+      visitor (LinkVisitor.)
+      content (slurp "./data/README-1.md")]
+  (let [parsed (.parse parser content)]
     (.accept parsed visitor)
     (.getLinks visitor)))
 
@@ -49,3 +65,7 @@
   "I don't do a whole lot ... yet."
   [& args]
   (println "Hello, World!"))
+
+(doseq [filePath 
+        (get-folder-files-seq (seq [(file  "./data")]))]
+  (processFile filePath))
