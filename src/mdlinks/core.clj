@@ -18,54 +18,51 @@
         children)))
     [parent]))
 
-(defn get-folder-files-seq
+(defn get-folder-files
   [queue]
   (if (not-empty queue)
     (let [firstItem (first queue)]
       (if (.isDirectory firstItem)        
-        (get-folder-files-seq (concat  (rest queue) (seq (.listFiles firstItem))))
-        (conj (get-folder-files-seq (rest queue)) firstItem)))
+        (get-folder-files 
+         (concat 
+          (rest queue) 
+          (seq (.listFiles firstItem))))
+        (conj 
+         (get-folder-files (rest queue)) 
+         firstItem)))
     (seq [])))
 
-(map 
- (fn 
-   [aFile] 
-   (println (.getAbsolutePath  aFile)))
- (get-folder-files-seq (seq [(file  "./data")])))
-
-(map 
- (fn 
-   [aFile] 
-   (println (.getAbsolutePath aFile)))
- (get-folder-files-map (file "./data/README-1.md")))
-
-(def links (atom []))
-
-(defn processFile
+(defn process-file
   [filePath]
-  (future 
-    (let [parser (.build (Parser/builder))
-          visitor (LinkVisitor.)
-          content (slurp filePath)]
-      (let [parsed (.parse parser content)]
-        (.accept parsed visitor)
-        (let [fileLinks (.getLinks visitor)]
-          (swap! links
-                 #(into [] (concat % fileLinks )))
-          (into [] (seq fileLinks)))))))
+  (let [p (promise)]    
+    (future 
+      (Thread/sleep 5000)
+      (let [parser (.build (Parser/builder))
+            visitor (LinkVisitor.)
+            content (slurp filePath)]
+        (let [parsed (.parse parser content)]
+          (.accept parsed visitor)
+          (let [fileLinks (.getLinks visitor)]
+            (deliver p (into [] (seq fileLinks)))))))
+    p))
 
-(let [parser (.build (Parser/builder))
-      visitor (LinkVisitor.)
-      content (slurp "./data/README-1.md")]
-  (let [parsed (.parse parser content)]
-    (.accept parsed visitor)
-    (.getLinks visitor)))
+(defn process-folder
+  [folderPath]
+  (let [p (promise)]
+    (future
+      (let [folderSeq (seq [(file folderPath)])]        
+        (let [promises 
+              (mapv 
+               #(process-file %) 
+               (get-folder-files folderSeq))]
+          (let [links 
+                (mapv (fn [p] @p) promises)]
+            (deliver p links)))))
+    p))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
   (println "Hello, World!"))
 
-(doseq [filePath 
-        (get-folder-files-seq (seq [(file  "./data")]))]
-  (processFile filePath))
+(println (flatten @(process-folder "./data")))
