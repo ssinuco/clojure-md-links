@@ -17,7 +17,7 @@
   (.add 
    (.state this) 
    {
-    :text (.getTitle link)
+    :text (.getLiteral (.getFirstChild link))
     :href (.getDestination link)
     }))
 

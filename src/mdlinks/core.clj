@@ -1,17 +1,17 @@
 (ns mdlinks.core
   (:require 
    [clojure.tools.cli :refer [parse-opts]]
-   [clojure.string :as string])
+   [clojure.string :as string]
+   [clojure.java.io :refer [file]]
+   [clj-http.client :as client :refer [get] :rename {get http-get}]
+   [slingshot.slingshot :refer [try+]])
   (:import [org.commonmark.parser Parser]
            [org.commonmark.node Node Link AbstractVisitor]
            [mdlinks.visitors LinkVisitor])
   (:gen-class))
 
-(use '[clojure.java.io :only (file)])
-(use '[clj-http.client :as client])
-(use '[slingshot.slingshot :only [try+]])
-
 (defn get-folder-files-map
+  "Given a path (File Java Object), returns a list of files in the path and in its subdirectories"
   [parent]
   (if (.isDirectory parent)     
     (let [children (.listFiles parent)]
@@ -24,6 +24,7 @@
     [parent]))
 
 (defn get-folder-files
+  "Given a seq of paths (File Java Object), returns a list of files in the paths and in their subdirectories"
   [queue]
   (if (not-empty queue)
     (let [firstItem (first queue)]
@@ -38,10 +39,10 @@
     (seq [])))
 
 (defn process-file
+  "Returns a promise which is resolved with a vec of links in a markdown file"
   [filePath]
   (let [p (promise)]    
     (future 
-      (Thread/sleep 5000)
       (let [parser (.build (Parser/builder))
             visitor (LinkVisitor.)
             content (slurp filePath)]
@@ -52,6 +53,7 @@
     p))
 
 (defn process-folder
+  "Returns a promise wich is resolved with a vector of links in all mardown files of a directory"
   [folderPath]
   (let [p (promise)]
     (future
@@ -66,12 +68,13 @@
     p))
 
 (defn send-http-request
+  "Validates a url making a http request"
   [link]
   (let [p (promise)
         url (:href link)]
     (future
       (try+
-        (let [response (client/get url)]
+        (let [response (http-get url {:cookie-policy :standard})]
           (deliver p 
                    (assoc 
                     link 
@@ -84,6 +87,7 @@
     p))
 
 (defn validate-links
+  "Given a vector of URLs, validates each item"
   [links]
   (let [p (promise)]
     (future
@@ -97,6 +101,7 @@
     p))
 
 (defn md-links
+  "Extracts and validate all links of allmardown files in a directory and its subdirectories"
   [path options]
   (let [
         validate (:validate options)
@@ -108,7 +113,9 @@
         (deliver p links)
         p))))
 
-(defn usage [options-summary]
+(defn usage 
+  "Returns a help message about how to use the command"
+  [options-summary]
   (->> ["MD-Links: Extracts links from markdown files."
         ""
         "Usage: mdlinks <path-to-file> [options]"
@@ -117,15 +124,18 @@
         options-summary]
        (string/join \newline)))
 
-(defn error-msg [errors]
+(defn error-msg 
+  "Returns a error message "
+  [errors]
   (str "The following errors occurred while parsing your command:\n\n"
        (string/join \newline errors)))
 
 (def cli-options
-  [[nil "--validate" "Validate urls" :default false]
+  [[nil "--validate" "Validate urls" :default false] 
    [nil "--stats" "Calculate stats" :default false]])
  
 (defn validate-args
+  "Validate arguments of the command"
   [args]
   (let [{:keys [options arguments errors summary]} 
         (parse-opts args cli-options)]
@@ -141,8 +151,9 @@
       {:exit-message (usage summary)}
       )))
 
-
-(defn exit [status msg]
+(defn exit 
+  "Exits scripts with a message"
+  [status msg]
   (println msg)
   (System/exit status))
 
@@ -151,4 +162,5 @@
   (let [{:keys [path options exit-message ok?]} (validate-args args)]
     (if exit-message
       (exit 1 exit-message)
-      (println @(md-links path options)))))
+      (println @(md-links path options)))
+    (shutdown-agents)))
